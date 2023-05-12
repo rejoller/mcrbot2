@@ -1,3 +1,5 @@
+
+import openai
 import telebot
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -30,10 +32,19 @@ espd_info_storage = {}
 szoreg_info_storage = {}
 message_storage = {}
 districts = ["Абанский р-н", "Ачинский р-н", "Курагинский р-н"]
-
+response_storage = {}
 # Установка токена и создание бота
 bot_token = '6263941409:AAE20_qJIMTw03dBYoH0_xcbugDs_4FzA5Y'
 bot = telebot.TeleBot(bot_token)
+
+
+
+openai.api_key = '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'
+# Установка токена и создание бота
+
+bot = telebot.TeleBot(bot_token)
+info_text_storage = {}
+
 
 
 import csv
@@ -981,6 +992,65 @@ def check_mszu_mo_2(user_message):
 
 
 
+def send_request_to_openai(chat_id):
+    global info_text_storage
+    trimmed_info = info_text_storage[chat_id][:5000]
+    messages = [
+        {"role": "system", "content": "ты сотрудник министерства цифрового развития Красноярского края. Гражданин пожаловался тебе на качество связи, направив официальное обращение. Ответь заявителю используя официально-деловой стиль письма. Подпишись как министерство цифрового развития Красноярского края  Сделай связный ответ, избегай тавтологий. "
+        "Вот руководство которыми ты должен обязательно руководствоваться при составлении ответа:\n"
+        "1. СЗО - это объекты подключенные в период с 2019 по 2021 год в рамках реализации Федерального проекта Информационная инфраструктура национальной программы 'Цифровая экономика Российской Федерации' в соотвествии с контрактом между Минцифры РФ и АО 'ЭР-Телеком Холдинг'. Имей ввиду, что информации о СЗО у заявителя нет. Ты должен сам ему рассказать о них\n"
+        "2. О таксофонах говори только если в населенном пункте отстутсвует сотовая связь ни какие программы не реализуются. Если есть другой тип связи, то упоминать про них не нужно\n"
+        "3. Субисдия (год) - мероприятие, которое реализуется за счет средств краевого бюджета\n"
+        "4. УЦН 1.0 или УЦН 2.0 - федеральный проект, который расшифровывается как 'Устранение цифрового неравенства'. Он реализуется оператором ПАО 'Ростелеком' в соответствии с контрактом, который заключен с Минцифры РФ\n"
+
+        "5. численность населения возьми после слов 'Население 2020' используется при реализации программы УЦН. Населенный пункт попадает в реализацию этой программы если его население от 100 до 500 человек и не имеет доступа к сотовой связи, которую можно взять после слов 'Сотовая связь:'. Этот проект предполагает строительство инфраструктуры для обеспечения услуг сотовой связи стандарта 4G до 2030 года во всех населенных пунктах где сейчас услуги состовой связи не предоставляются.\n"
+        "6. Если чувствуешь, что ситуация, то постарайся обнадежить. \n"
+        "Вставляй эти данные из руководства в шаблон для ответа:"
+
+
+
+
+        "Начало шаблона. "
+        "В ответ на Ваше обращение по вопросу предоставления услуг подвижной радиотелефонной связи на территории (наименование населенного пункта) министерство цифрового развития Красноярского края сообщает следующее.\n"
+        "По информации операторов связи, на территории населенного пункта услуги предоставляются операторами (расскажи какие операторы и с каким уровнем сигнала предоставляют услуги, например: 'услуги предоставляются оператором Мегафон с уровнем сигнала 4G' если в строке 'Сотовая связь' содержится значение 'уд.', то скажи что это связано со значительной удаленностью населенного пункта от объекта связи и особенностями рельефа местности)."
+
+        "(Если строка 'Программы' имеет какие-либо значения, то пиши примерно так: 'Также сообщаем, что в (значение года из строки 'Программы') году реализован или будет реализован (наименование проекта/программы, в приоритете рассказать о УЦН 1.0 или УЦН 2.0)."
+        "Тем не менее на данный момент имеется возможность совершать бесплатные звонки внутри страны на любые номера без использования телефонной карты с помощью таксофона, расположенного на территории указанного населенного пункта (говори об этом если нет альтернативных типов связи). Если и таксофона нет, то скажи что министерством будет рассмотрен о его подключении )"
+        "По вопросу предоставления услуг доступа в сеть интернет в указанном населенном пункте сообщаем (тут расскажи информацию об операторах Интернета и типах подключения)."
+        "Конец шаблона."
+        "Концовку придумай сам, на основе сказанного, главное чтобы она была на позитивной ноте и поблагодари за обращение."},
+
+
+
+
+        {"role": "user", "content": trimmed_info}
+    ]
+    print("Sending request to OpenAI with messages:", messages)
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=messages,
+        max_tokens=2000,
+        n=1,
+        temperature=0.75,
+    )
+    print("Received response from OpenAI:", response)
+    return response['choices'][0]['message']['content']
+
+
+
+
+
+def handle_digital_ministry_info(call):
+    global info_text_storage
+    chat_id = call.message.chat.id
+    print("Handling digital ministry info for chat_id:", chat_id)
+
+    # Получаем info_text для текущего chat_id из словаря info_text_storage
+    info_text = info_text_storage[chat_id]
+
+    openai_response = send_request_to_openai(chat_id)
+    print("Sending OpenAI response to chat_id:", chat_id)
+    bot.send_message(chat_id, openai_response)
 
 
 
@@ -990,6 +1060,7 @@ def check_mszu_mo_2(user_message):
 
 @bot.message_handler(content_types=['text'])
 def handle_text(message):
+    global info_text_storage
     print(f"Received message: {message.text}")
     log_user_data_from_message(message)
     if message.text.lower().startswith("тор "):
@@ -1031,13 +1102,14 @@ def handle_text(message):
       #  return
 
     # Если соответствие найдено в столбце A
+    allowed_users = {964635576, 1063749463, 374056328, 572346758, 434872315}
     if found_values_a:
         #bot.send_message(message.chat.id, f'Секундочку, {user_first_name} Загружаю информацию по вашему запросу ')
         found_values = found_values_a
 
         if len(found_values) == 1:
             response = f'{found_values[0][1]}:\nЧисленность населения (2010 г.): {found_values[0][2]} чел.\nЧисленность населения (2020 г.): {found_values[0][5]} чел.\nСотовая связь: {found_values[0][3]}\nИнтернет: {get_value(found_values[0], 9)}\nПрограммы: {get_value(found_values[0], 11)}\nКоличество таксофонов: {get_value(found_values[0], 12)}'
-
+            info_text_storage[message.chat.id] = response
             messages = split_message(response)
 
             for msg in messages:
@@ -1045,18 +1117,28 @@ def handle_text(message):
             latitude = found_values[0][7]  # Широта находится в столбце H таблицы goroda2.0
             longitude = found_values[0][8]  # Долгота находится в столбце I таблицы goroda2.0
 
-            # Отправляем карту с отмеченной точкой на координатах населенного пункта
             bot.send_location(message.chat.id, latitude, longitude)
             szofed_values = search_szofed_values(found_values[0][4])
             espd_values = search_espd_values(found_values[0][4])
             szoreg_values = search_szoreg_values(found_values[0][4])
             inline_keyboard = types.InlineKeyboardMarkup(row_width=3)
-            if szofed_values or espd_values or szoreg_values:
+            if message.from_user.id in allowed_users:
+                button_digital_ministry_info = types.InlineKeyboardButton("Подготовить ответ на обращение", callback_data=json.dumps({"type": "digital_ministry_info", "chat_id": message.chat.id}))
+                inline_keyboard.add(button_digital_ministry_info)
+
+            if szofed_values or espd_values or szoreg_values or info_text_storage:
+
 
                 if szofed_values:
+                    print("Found szofed_values")
                     szofed_response = 'В указанном населенном пункте рамках федерального проекта в период с 2019 по 2021 год были подключены следующие СЗО:\n\n'
                     for i, row in enumerate(szofed_values, 1):
                         szofed_response += f'\n{i}. {row[8]} {row[9]} по адресу {row[4]}\nТип подключения (Узел связи): {row[10]}\nПропускная способность {row[11]} Мб/сек\nДата подключения:{row[12]}.\n'
+                    print("szofed_response:", szofed_response)
+                    info_text_storage[message.chat.id] += szofed_response
+
+
+                    print("info_text_storage:", info_text_storage)
 
                     callback_data = json.dumps({"type": "additional_info", "chat_id": message.chat.id})
                     additional_info_storage[message.chat.id] = szofed_response
@@ -1085,10 +1167,13 @@ def handle_text(message):
                     inline_keyboard.add(button_szoreg_info)
 
                 bot.send_message(message.chat.id, "Для получения дополнительной информации нажмите на одну из кнопок ниже:", reply_markup=inline_keyboard)
+            response_storage[message.chat.id] = response
 
             bot.callback_query_handler(lambda query: json.loads(query.data)["type"] == "additional_info")(handle_additional_info)
             bot.callback_query_handler(lambda query: json.loads(query.data)["type"] == "espd_info")(handle_espd_info)
             bot.callback_query_handler(lambda query: json.loads(query.data)["type"] == "szoreg_info")(handle_szoreg_info)
+            bot.callback_query_handler(lambda query: json.loads(query.data)["type"] == "digital_ministry_info")(handle_digital_ministry_info)
+
         # Если найдено более одного значения
 
         if len(found_values) > 1:
@@ -1112,6 +1197,7 @@ def handle_text(message):
             buttons = [str(i + 1) for i in range(len(found_values))]
             buttons.append("Отмена")
             keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
+
             keyboard.add(*buttons)
             bot.send_message(message.chat.id, 'Выберите номер необходимого населенного пункта:', reply_markup=keyboard)
             bot.register_next_step_handler(message, lambda x: handle_choice(x, found_values, keyboard))
@@ -1490,6 +1576,8 @@ def handler_otpusk_message(message, employees_on_vacation):
 
 
 def handle_choice(message, found_values, keyboard):
+    global info_text_storage
+    allowed_users = {964635576, 1063749463, 374056328, 572346758, 434872315}
     szoreg_response = ""
     espd_response = ""
     if message.text == "Отмена":
@@ -1501,7 +1589,7 @@ def handle_choice(message, found_values, keyboard):
             raise ValueError
 
         response = f'{get_value(found_values[index - 1], 1)}:\nЧисленность населения (2010 г): {get_value(found_values[index - 1], 2)} чел.\nЧисленность населения (2010 г): {get_value(found_values[index - 1], 5)} чел.\nСотовая связь: {get_value(found_values[index - 1], 3)}\nИнтернет: {get_value(found_values[index - 1], 9)}\nПрограммы: {get_value(found_values[index - 1], 11)}\nКоличество таксофонов: {get_value(found_values[index - 1], 12)}'
-
+        info_text_storage[message.chat.id] = response
         messages = split_message(response)
 
         for msg in messages:
@@ -1512,13 +1600,17 @@ def handle_choice(message, found_values, keyboard):
         # Отправляем карту с отмеченной точкой на координатах населенного пункта
         bot.send_location(message.chat.id, latitude, longitude)
         inline_keyboard = types.InlineKeyboardMarkup()
-
+        if message.from_user.id in allowed_users:
+            button_digital_ministry_info = types.InlineKeyboardButton("Подготовить ответ на обращение", callback_data=json.dumps({"type": "digital_ministry_info", "chat_id": message.chat.id}))
+            inline_keyboard.add(button_digital_ministry_info)
         szofed_values = search_szofed_values(found_values[index - 1][4])
+        #bot.callback_query_handler(lambda query: json.loads(query.data)["type"] == "digital_ministry_info")(handle_digital_ministry_info)
         if szofed_values:
             szofed_response = 'В указанном населенном пункте рамках федерального проекта в период с 2019 по 2021 год были подключены следующие СЗО:\n\n'
             for i, row in enumerate(szofed_values, 1):
                 szofed_response += f'\n{i}. {row[8]} {row[9]} по адресу {row[4]}\nТип подключения (Узел связи): {row[10]}\nПропускная способность {row[11]} Мб/сек\nДата подключения:{row[12]}.\n'
 
+            info_text_storage[message.chat.id] += szofed_response
             callback_data = json.dumps({"type": "additional_info", "chat_id": message.chat.id})
             additional_info_storage[message.chat.id] = szofed_response
             button_additional_info = types.InlineKeyboardButton("СЗО", callback_data=callback_data)
@@ -1535,6 +1627,7 @@ def handle_choice(message, found_values, keyboard):
             button_espd_info = types.InlineKeyboardButton("ЕСПД", callback_data=callback_data)
             inline_keyboard.add(button_espd_info)
 
+
         szoreg_values = search_szoreg_values(found_values[index - 1][4])
         if szoreg_values:
             szoreg_response = 'СЗО в указанном населенном пункте, которым предоставляются услуги за счет средств краевого бюджета:\n\n'
@@ -1545,12 +1638,15 @@ def handle_choice(message, found_values, keyboard):
             szoreg_info_storage[message.chat.id] = szoreg_response
             button_szoreg_info = types.InlineKeyboardButton("СЗО (региональный ГК)", callback_data=callback_data)
 
-        if szofed_values or espd_values or szoreg_values:
+        if szofed_values or espd_values or info_text_storage or szoreg_values:
+
             bot.send_message(message.chat.id, "Для получения дополнительной информации нажмите на кнопку ниже", reply_markup=inline_keyboard)
         #bot.send_message(message.chat.id, "Для получения дополнительной информации нажмите на кнопку ниже", reply_markup=inline_keyboard)
         bot.callback_query_handler(lambda query: json.loads(query.data)["type"] == "additional_info")(handle_additional_info)
         bot.callback_query_handler(lambda query: json.loads(query.data)["type"] == "espd_info")(handle_espd_info)
         bot.callback_query_handler(lambda query: json.loads(query.data)["type"] == "szoreg_info")(handle_szoreg_info)
+        bot.callback_query_handler(lambda query: json.loads(query.data)["type"] == "digital_ministry_info")(handle_digital_ministry_info)
+
 
         return
     except ValueError:
