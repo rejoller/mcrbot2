@@ -43,7 +43,7 @@ bot = telebot.TeleBot(bot_token)
 
 
 
-openai.api_key = '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'
+
 # Установка токена и создание бота
 
 bot = telebot.TeleBot(bot_token)
